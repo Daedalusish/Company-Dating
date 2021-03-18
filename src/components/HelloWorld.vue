@@ -110,7 +110,7 @@
         class="border rounded-lg w-28 text-center appearance-none"
         type="number"
         min="0"
-        v-model="overideTables"
+        v-model="slots"
       />
 
       <button
