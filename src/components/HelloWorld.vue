@@ -112,6 +112,13 @@
         min="0"
         v-model="slots"
       />
+      <select v-model="mode">
+        <option disabled value="">Please select priority handling</option>
+        <option>Ordered</option>
+        <option>Ordered with Genetic</option>
+        <option>Head Only</option>
+        <option>Unordered</option>
+      </select>
 
       <button
         class="bg-sand hover:bg-clay cursor-pointer text-dBlack font-bold py-2 mt-2 px-4 rounded inline-flex items-center justify-between"
@@ -182,6 +189,7 @@ export default {
   },
   data() {
     return {
+      wishArray: [],
       iterations: 1000,
       delimiter: "|",
       encoding: "ISO-8859-1",
@@ -193,10 +201,17 @@ export default {
       secondPriority: [],
       otherPriority: [],
       noMeeting: [],
+      processedMeeting: [],
       slots: 10,
       fileAccept: false,
       inProcess: false,
       processed: false,
+      markup : true,
+      maxPriorities : 0,
+      mode: "Ordered",
+      genetic: false,
+      headonly: false,
+
 
       fieldsFilled: null,
       firstprioScore: null,
@@ -233,6 +248,7 @@ export default {
       this.inProcess = true;
       if (!this.processed) {
         this.datainput = this.processWishes(this.datainput);
+        this.processed = true
       }
       let possible = Object.values(this.datainput).length;
 
@@ -241,10 +257,31 @@ export default {
       } else {
         this.tables = this.overideTables;
       }
-      this.firstPrio(this.datainput);
-      this.secondPrio(this.datainput);
-      this.remaining(this.datainput);
-      this.bruteForce();
+      if(this.mode == "Unordered"){
+
+        this.firstPrio(this.datainput);
+        this.secondPrio(this.datainput);
+        this.remaining(this.datainput);
+        this.bruteForce();
+      }
+      else if(this.mode =="Ordered" || this.mode == "Ordered with Genetic" || this.mode=="Head Only"){
+            if(this.mode == "Ordered with Genetic"|| this.mode=="Head Only"){
+          this.genetic = true
+        }
+        if(this.mode=="Head Only"){
+          this.headonly = true
+        }
+        console.log("Ordered mode")
+        console.log(this.datainput)
+        this.generatePriorities()
+        console.log(this.processedMeeting)
+        this.alternateRemaining(this.datainput)
+        this.tableWithPriorityIndex()
+
+      }
+      else{
+        console.log("ERROR: No mode in system")
+      }
     },
 
     //FILE OPERATIONS
@@ -303,8 +340,349 @@ export default {
     },
 
     //TABLE GENERATION
+    generatePriorities(){
+      let maxValue = 0
+      for(let i = 0; i < this.datainput.length; i++){
+        if(this.datainput[i][1].length > maxValue){
+          maxValue = this.datainput[i][1].length 
+        }
+      }
+      if(this.headonly){
+        maxValue=4
+      }
+      for(let j = 0; j < maxValue; j++){
+        let tempstorage = this.getPriority(this.datainput, j)
+        if(tempstorage != undefined){
+          this.wishArray.push(tempstorage)
+        }
+      }
+      console.log("Wishes")
+      console.log(this.wishArray)
+      this.maxPriorities = maxValue
+    },
 
-    //meetings both parties desire
+    getPriority(data,index){
+      let temp = []
+      for(let i = 0; i < data.length; i++){
+        if(data[i][1][index] != undefined && data[i][1][index] != ""){
+          let tempsort = [data[i][0],data[i][1][index]]
+          tempsort.sort()
+          if(!this.arrayInclude(this.processedMeeting, tempsort)){
+            this.processedMeeting.push(tempsort) 
+            temp.push(tempsort)
+          }
+        }
+      }
+      if(temp.length == 0){
+        return undefined
+      }
+      else{
+        return temp
+      }
+    },
+
+    individualPriorities(meetings){
+      let resultList = []
+      for(let i = 0; i < this.datainput.length;i++){
+        let counter = 0
+        for(let j = 0; j < this.datainput[i][1].length; j++){
+          let temp = [this.datainput[i][0],this.datainput[i][1][j]]
+          temp.sort()
+          if(this.arrayInclude(meetings,temp)){
+            counter ++
+          }
+        }
+        let something = 0
+        if(this.datainput[i][1].length == 1 && counter == 0){
+          something = 0
+        }
+        else{
+          something = this.datainput[i][1].length 
+        }
+        resultList.push(this.datainput[i][0] + " satisfied meetings:  " + counter + "/" + something)
+      }
+      return resultList
+
+    },
+
+
+
+
+    alternateRemaining(data){
+      for(let i = 0; i < data.length; i++){
+        for(let j = i+1; j < data.length; j++){
+          if(this.datainput[i][2] != "" && this.datainput[i][2] != undefined && this.datainput[i][2] != this.datainput[j][2]){
+            let temp = [this.datainput[i][0], this.datainput[j][0]]
+            if( !this.arrayInclude(this.processedMeeting, temp)){
+              this.otherPriority.push(temp)
+            }
+          }
+        }
+      }
+      console.log("Other priorities")
+      console.log(this.otherPriority)
+    },
+
+    tableWithPriorityIndex(){
+      let havemet = []
+      let dayplan = []
+      let bestScores = []
+      let fieldsFilled = 0
+      let bestTable = [];
+      let geneticMatches = [];
+      let havemetBest = []
+      for(let i = 1; i <= this.maxPriorities; i ++){
+        bestScores.push(0)
+      }
+      let tempScores = bestScores
+
+      let progress = 0;
+      for (let x = 0; x < this.iterations; x++) {
+        for(let v = 0; v < this.wishArray.length; v++){
+          this.wishArray[v] = this.shuffle(this.wishArray[v])
+        }
+        this.otherPriority = this.shuffle(this.otherPriority)
+        havemet = [];
+        dayplan = [];
+        geneticMatches = []
+        tempScores = bestScores
+
+        let intermediate = Math.floor(((x + 1) / this.iterations) * 100);
+        if (intermediate != progress) {
+          progress = intermediate;
+          console.log(progress + "% Complete...");
+        }
+        for(let s = 0; s < this.slots; s++){
+          let inMeeting = []
+          let slotplan = []
+          for(let t = 0; t < this.tables; t++){
+            let foundMatch = false
+            for(let w = 0; w < this.wishArray.length; w++){
+              for(let i = 0; i < this.maxPriorities; i++){
+                let meeting = this.wishArray[w][i]
+                if(meeting != undefined && meeting.includes("Eiendomsappen") && s < 5){
+                  continue
+                }
+                else if(meeting != undefined && !inMeeting.includes(meeting[0]) && !inMeeting.includes(meeting[1]) && !this.arrayInclude(havemet, meeting)){
+                  havemet.push(meeting)
+                  inMeeting.push(meeting[0])
+                  inMeeting.push(meeting[1])
+                  let prioritynumber = w + 1
+                  slotplan.push(meeting[0] + " - " + meeting[1] + " (" + prioritynumber +")")
+
+                  geneticMatches.push([meeting[0],meeting[1],prioritynumber])
+                  foundMatch = true
+                  break
+                }
+              }
+              if(foundMatch){
+                break
+              }
+            }
+            if(!foundMatch){
+              for(let j = 0; j < this.otherPriority.length; j++){
+                let meeting = this.otherPriority[j]
+                                if(meeting != undefined && meeting.includes("Eiendomsappen") && s < 5){
+                  continue
+                }
+                else 
+                if(meeting != undefined && !inMeeting.includes(meeting[0]) && !inMeeting.includes(meeting[1]) && !this.arrayInclude(havemet, meeting)){
+                  havemet.push(meeting)
+                  inMeeting.push(meeting[0])
+                  inMeeting.push(meeting[1])
+                  slotplan.push(meeting[0] + " - " + meeting[1])
+                  break
+                }
+              }
+            }
+          }
+          dayplan.push(slotplan)
+        }
+        let score = 0;
+        for (let m = 0; m < dayplan.length; m++) {
+          score += dayplan[m].length;
+        }
+        let fieldsBetter = false
+        if(fieldsFilled < score){
+          fieldsFilled = score
+          fieldsBetter = true
+          for(let a = 0; a < havemet.length; a++){
+            for(let b = 0; b < this.wishArray.length; b++){
+              if(this.arrayInclude(this.wishArray[b],havemet[a])){
+                tempScores[b]++
+                break 
+              }
+            }
+          }
+          let betterMatch = true
+          for(let c = 0; c < tempScores.length; c++){
+            if(tempScores[c] > bestScores[c]){
+              betterMatch = true
+              break
+            }
+            else if(tempScores[c] < bestScores[c]){
+              betterMatch = false;
+              break
+            }
+          }
+          if(betterMatch || fieldsBetter){
+            bestScores = tempScores
+            bestTable = dayplan
+            havemetBest = havemet
+            console.log("Bettermatch!")
+          }
+        }
+      }
+      if(this.genetic){
+        let remainingWishes = []
+        for(let x = 0; x < this.wishArray.length; x++){
+          for(let y = 0; y < this.wishArray[x].length; y++){
+            if(!this.arrayInclude(geneticMatches,this.wishArray[x][y])){
+              let prioritynumber = x + 1
+              remainingWishes.push([this.wishArray[x][y][0],this.wishArray[x][y][1], prioritynumber])
+            }
+          }
+        }
+        this.GeneticFollow(bestTable,geneticMatches, remainingWishes,fieldsFilled)
+      }
+      else{
+      console.log(this.individualPriorities(havemetBest))
+      this.preview = bestTable
+      }
+    },
+
+    GeneticFollow(bestTable, geneticroot, remainingwishes, fieldsFilled){
+      //let subsample = remainingwishes.concat(this.otherPriority)
+      let subsample = [...remainingwishes, ...this.otherPriority]
+      console.log("Score to beat: " + fieldsFilled)
+      console.log("Sample length: " + subsample.length)
+      console.log(subsample)
+      console.log("Genetic Root length: " + geneticroot.length)
+      console.log(geneticroot)
+      let progress = 0
+      let extendedrun = this.iterations*100
+      let havemetBest = []
+      for(let x = 0; x < extendedrun; x++){
+        geneticroot = this.shuffle(geneticroot)
+        subsample = this.shuffle(subsample)
+        let minimum = (this.tables*this.slots)-fieldsFilled
+        let havemet = []
+        let dayplan = []
+        let emptySlot = 0
+        let abandon = false
+        let newroot = []
+        /*
+        var arr = [];
+        while(arr.length < 30){
+          var r = Math.floor(Math.random() * subsample.length) + 1;
+          if(arr.indexOf(r) === -1) arr.push(r);
+        }
+        for(let i = 0; i < arr.length; i++){
+          trialbunch.push(subsample[arr[i]])
+        }
+        */
+
+
+        let intermediate = Math.floor(((x + 1) / extendedrun) * 100);
+        if (intermediate != progress) {
+          progress = intermediate;
+          console.log(progress + "% Complete...");
+        }
+        for(let s = 0; s < this.slots; s++){
+          let inMeeting = []
+          let slotplan = []
+          for(let t = 0; t < this.tables; t++){
+            let foundMatch = false
+
+            for(let w = 0; w < geneticroot.length; w++){
+              let meeting = geneticroot[w]
+                              if(meeting != undefined && meeting.includes("Eiendomsappen") && s < 5){
+                  continue
+                }
+                else 
+              if(meeting != undefined && !inMeeting.includes(meeting[0]) && !inMeeting.includes(meeting[1]) && !this.arrayInclude(havemet, meeting)){
+                havemet.push(meeting)
+                inMeeting.push(meeting[0])
+                inMeeting.push(meeting[1])
+                let category = ""
+                if(meeting.length == 3){
+                  category = "(" + meeting[2] + ")"
+                  newroot.push(meeting)
+                }
+                slotplan.push(meeting[0] + " - " + meeting[1] + " " + category)
+                foundMatch = true
+                break
+              }
+            }
+
+            if(!foundMatch){
+              for(let v = 0; v < subsample.length; v++){
+                let meeting = subsample[v]
+                                if(meeting != undefined && meeting.includes("Eiendomsappen") && s < 5){
+                  continue
+                }
+                else 
+                if(meeting != undefined && !inMeeting.includes(meeting[0]) && !inMeeting.includes(meeting[1]) && !this.arrayInclude(havemet, meeting)){
+                  havemet.push(meeting)
+                  inMeeting.push(meeting[0])
+                  inMeeting.push(meeting[1])
+                  let category = ""
+                  if(meeting.length == 3){
+                    category = "(" + meeting[2] + ")"
+                    newroot.push(meeting)
+                    
+                  }
+                  slotplan.push(meeting[0] + " - " + meeting[1] + " " + category)
+                  foundMatch = true
+                  break
+                }
+              }
+            }
+            if(!foundMatch){
+              emptySlot ++
+              if(emptySlot > minimum){
+                abandon = false
+                //break
+              }
+            }
+          }
+          if(abandon){
+            //break
+            continue
+          }
+          dayplan.push(slotplan)
+        }
+        if(!abandon){
+          let score = 0
+          for(let i = 0; i < dayplan.length; i++){
+            score += dayplan[i].length
+          }
+          if((score == fieldsFilled && newroot.length > geneticroot.length) || (score > fieldsFilled && newroot.length == geneticroot.length) || (score > fieldsFilled && newroot.length > geneticroot.length)){
+            console.log("Found better fit!")
+            console.log("Fieldsfilled: " + score + ", priorities met: " + newroot.length)
+            fieldsFilled = score
+            geneticroot = newroot
+            bestTable = dayplan
+            havemetBest = havemet
+            let temparr = []
+            for(let x = 0; x < this.wishArray.length; x++){
+              for(let y = 0; y < this.wishArray[x].length; y++){
+                if(!this.arrayInclude(geneticroot,this.wishArray[x][y])){
+                  let prioritynumber = x + 1
+                  temparr.push([this.wishArray[x][y][0],this.wishArray[x][y][1], prioritynumber])
+                }
+              }
+            }
+            subsample = [...temparr, ...this.otherPriority]
+          }
+        }
+
+      }
+      console.log(this.individualPriorities(havemetBest))
+      this.preview = bestTable  
+    },
+
+//meetings both parties desire
     firstPrio(data) {
       let output = [];
       for (let i = 0; i < data.length; i++) {
@@ -379,6 +757,8 @@ export default {
       let bestSecondScore = 0;
       var bestTable = [];
       let progress = 0;
+      let haveMet = [];
+      let havemetBest = []
 
       let brute = this.firstPriority.concat(
         this.secondPriority,
@@ -386,7 +766,7 @@ export default {
       );
       for (let x = 0; x < this.iterations; x++) {
         brute = this.shuffle(brute);
-        let haveMet = [];
+        haveMet = [];
         let dayplan = [];
 
         let intermediate = Math.floor(((x + 1) / this.iterations) * 100);
@@ -400,6 +780,10 @@ export default {
           for (let j = 0; j < this.tables; j++) {
             for (let k = 0; k < brute.length; k++) {
               let temp = brute[k];
+                              if(temp != undefined && temp.includes("Eiendomsappen") && i < 5){
+                  continue
+                }
+                else 
               if (
                 temp != undefined &&
                 !this.arrayInclude(haveMet, temp) &&
@@ -409,7 +793,15 @@ export default {
                 haveMet.push(temp);
                 inMeeting.push(temp[0]);
                 inMeeting.push(temp[1]);
-                slotplan.push(temp[0] + " - " + temp[1]);
+                let append = ""
+                if(this.markup)
+                  if(this.arrayInclude(this.firstPriority,temp)){
+                    append = "(1)"
+                  }
+                  else if(this.arrayInclude(this.secondPriority,temp)){
+                    append = "(2)"
+                  }
+                  slotplan.push(temp[0] + " - " + temp[1] + " " + append);
                 break;
               }
             }
@@ -439,6 +831,7 @@ export default {
           bestSecondScore = secondCount;
           console.log("New best score!: " + bestScore);
           bestTable = dayplan;
+          havemetBest = haveMet
         } else if (
           score >= bestScore &&
           firstCount >= bestFirstScore &&
@@ -449,6 +842,7 @@ export default {
           bestSecondScore = secondCount;
           console.log("New best score!: " + bestScore);
           bestTable = dayplan;
+          havemetBest = haveMet
         }
       }
       this.fieldsFilled = bestScore;
@@ -465,6 +859,9 @@ export default {
         bestSecondScore +
         "/" +
         this.secondPriority.length;
+      console.log("Meeting conditions:")
+      console.log(haveMet)
+      console.log(this.individualPriorities(havemetBest))
       this.inProcess = false;
     },
   },
