@@ -5,7 +5,9 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint"
+    "lint": "vue-cli-service lint",
+    "postinstall": "npm run build",
+    "start": "node server.js"
   },
   "dependencies": {
     "core-js": "^3.6.5",
@@ -21,7 +23,9 @@
     "babel-eslint": "^10.1.0",
     "eslint": "^6.7.2",
     "eslint-plugin-vue": "^6.2.2",
+    "express": "^4.17.3",
     "postcss": "^7.0.35",
+    "serve-static": "^1.15.0",
     "tailwindcss": "npm:@tailwindcss/postcss7-compat@^2.0.3",
     "vue-csv-downloader": "^1.0.3",
     "vue-template-compiler": "^2.6.11"
